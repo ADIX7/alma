@@ -46,7 +46,7 @@ pub fn main() !void {
 
     const context = module.ModuleContext{
         .module = args.module,
-        .module_path = try std.fmt.allocPrint(allocator, "/home/adam/dotconfig/{s}/.alma-config.json", .{args.module}),
+        .module_path = try std.fmt.allocPrint(allocator, "/home/adam/dotconfig/{s}/.alma.yml", .{args.module}),
     };
     defer allocator.free(context.module_path);
 
@@ -63,10 +63,22 @@ pub fn main() !void {
         }
         return err;
     };
+    defer allocator.destroy(moduleConfig);
     defer moduleConfig.deinit();
 
     std.debug.print("1\n", .{});
-    std.debug.print("Module configuration loaded successfully: {}\n", .{moduleConfig.value.len});
+    std.debug.print("Module configuration loaded successfully\n", .{});
+    std.debug.print("target: {s}\n", .{moduleConfig.target orelse "-"});
+    std.debug.print("install: {s}\n", .{moduleConfig.install orelse "-"});
+    std.debug.print("configure: {s}\n", .{moduleConfig.configure orelse "-"});
+    if (moduleConfig.links) |links| {
+        std.debug.print("Links:\n", .{});
+        for (links) |link| {
+            std.debug.print(" - {s} -> {s}\n", .{ link.source, link.target });
+        }
+    } else {
+        std.debug.print("No links defined.\n", .{});
+    }
 }
 
 fn parseArgs(allocator: std.mem.Allocator) !Args {
