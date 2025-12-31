@@ -24,6 +24,9 @@ pub fn build(b: *std.Build) void {
     });
     exe.root_module.addImport("yaml", yaml.module("yaml"));
 
+    const known_folders = b.dependency("known_folders", .{}).module("known-folders");
+    exe.root_module.addImport("known-folders", known_folders);
+
     const run_step = b.step("run", "Run the app");
 
     const run_cmd = b.addRunArtifact(exe);

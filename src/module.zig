@@ -1,5 +1,6 @@
 const std = @import("std");
 const Yaml = @import("yaml").Yaml;
+const log = std.log.scoped(.alma);
 
 pub const ModuleContext = struct {
     repo: ?[]u8 = null,
@@ -23,7 +24,7 @@ pub const ModuleContext = struct {
         const file = try std.fs.cwd().openFile(module.module_path, .{});
         var reader = file.reader(&buf);
         const read = try reader.interface.readSliceShort(&buf2);
-        std.debug.print("Read {d} bytes from configuration file\n'{s}'", .{ read, buf2[0..read] });
+        log.debug("Read {d} bytes from configuration file\n'{s}'", .{ read, buf2[0..read] });
         //TODO: make it parse from stream
 
         var yaml: Yaml = Yaml{ .source = buf2[0..read] };

@@ -1,95 +1,83 @@
 const std = @import("std");
 const module = @import("module.zig");
+const Command = @import("command.zig").Command;
+const linkHandler = @import("link.zig").linkHandler;
 
-const Args = struct {
-    repo: ?[]u8,
-    module: []u8,
+const log = std.log.scoped(.alma);
+
+pub const std_options: std.Options = .{
+    .log_level = std.log.Level.debug,
 };
 
 pub fn main() !void {
+    
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     defer _ = gpa.deinit();
 
-    var stdout_buffer: [1024]u8 = undefined;
-    var stdout_writer = std.fs.File.stdout().writer(&stdout_buffer);
-    const stdout = &stdout_writer.interface;
-    defer stdout.flush() catch {};
-
     var argsAllocator = try std.process.argsWithAllocator(allocator);
     defer argsAllocator.deinit();
 
     _ = argsAllocator.skip();
 
-    std.debug.print("1\n", .{});
-
-    const args = parseArgs(allocator) catch |err| {
+    const maybeCommand = parseArgs(allocator) catch |err| {
         switch (err) {
             error.MissingModuleName => {
-                try stdout.print("Error: Missing module name argument\n", .{});
+                log.info("Error: Missing module name argument\n", .{});
                 return;
             },
             else => {
-                try stdout.print("Error: Unknown error\n", .{});
+                log.info("Error: Unknown error\n", .{});
                 return;
             },
         }
     };
-    defer {
-        allocator.free(args.module);
-        if (args.repo) |s| {
-            allocator.free(s);
-        }
-    }
 
-    std.debug.print("2\n", .{});
-
-    const context = module.ModuleContext{
-        .module = args.module,
-        .module_path = try std.fmt.allocPrint(allocator, "/home/adam/dotconfig/{s}/.alma.yml", .{args.module}),
+    var command = maybeCommand orelse {
+        log.info("No command supplied.", .{});
+        printHelp();
+        return;
     };
-    defer allocator.free(context.module_path);
 
-    std.debug.print("3\n", .{});
+    defer command.deinit(allocator);
 
-    const moduleConfig = context.loadConfiguration(allocator) catch |err| {
-        switch (err) {
-            error.FileNotFound => {
-                try stdout.print("Error: Configuration file not found at path: {s}\n", .{context.module_path});
-            },
-            else => {
-                try stdout.print("Error loading configuration: {}\n", .{err});
-            },
-        }
-        return err;
-    };
-    defer allocator.destroy(moduleConfig);
-    defer moduleConfig.deinit();
-
-    std.debug.print("1\n", .{});
-    std.debug.print("Module configuration loaded successfully\n", .{});
-    std.debug.print("target: {s}\n", .{moduleConfig.target orelse "-"});
-    std.debug.print("install: {s}\n", .{moduleConfig.install orelse "-"});
-    std.debug.print("configure: {s}\n", .{moduleConfig.configure orelse "-"});
-    if (moduleConfig.links) |links| {
-        std.debug.print("Links:\n", .{});
-        for (links) |link| {
-            std.debug.print(" - {s} -> {s}\n", .{ link.source, link.target });
-        }
-    } else {
-        std.debug.print("No links defined.\n", .{});
+    switch (command) {
+        Command.unsupported => |cmd| {
+            log.info("Error: Unsupported command: {s}\n\n", .{cmd});
+            printHelp();
+        },
+        Command.help => {
+            printHelp();
+        },
+        Command.link => |linkCmd| {
+            linkHandler(allocator, linkCmd) catch |err| {
+                log.info("Error executing link command: {}\n\n", .{err});
+                return err;
+            };
+        },
     }
 }
 
-fn parseArgs(allocator: std.mem.Allocator) !Args {
-    var argsAllocator = try std.process.argsWithAllocator(allocator);
-    defer argsAllocator.deinit();
+fn parseArgs(allocator: std.mem.Allocator) !?Command {
+    var argIter = try std.process.argsWithAllocator(allocator);
+    defer argIter.deinit();
 
-    _ = argsAllocator.skip();
+    _ = argIter.skip();
 
+    const arg = argIter.next() orelse return null;
+    if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
+        return Command.help;
+    } else if (std.mem.eql(u8, arg, "link")) {
+        return parseLinkArgs(&argIter, allocator) catch |err| {
+            return err;
+        };
+    } else return Command{ .unsupported = try allocator.dupe(u8, arg) };
+}
+
+fn parseLinkArgs(argIter: *std.process.ArgIterator, allocator: std.mem.Allocator) !Command {
     var repoName: ?[]u8 = null;
     var moduleName: ?[]u8 = null;
-    while (argsAllocator.next()) |arg| {
+    while (argIter.next()) |arg| {
         if (moduleName) |m| {
             repoName = m;
             moduleName = allocator.dupe(u8, arg) catch return error.OutOfMemory;
@@ -97,13 +85,19 @@ fn parseArgs(allocator: std.mem.Allocator) !Args {
             moduleName = allocator.dupe(u8, arg) catch return error.OutOfMemory;
         }
     }
-
     if (moduleName == null) {
         return error.MissingModuleName;
     }
 
-    return .{
+    return Command{ .link = .{
         .repo = repoName,
         .module = moduleName.?,
-    };
+    } };
+}
+
+fn printHelp() void {
+    log.info("Usage: alma <command> [options]\n", .{});
+    log.info("Commands:\n", .{});
+    log.info("  link [repo] <module>   Link a module from an optional repo\n", .{});
+    log.info("  --help, -h             Show this help message\n", .{});
 }
