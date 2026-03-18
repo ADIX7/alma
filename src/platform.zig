@@ -17,6 +17,12 @@ pub const PlatformIdentifier = struct {
     distro: ?[]const u8 = null,
     arch: ?[]const u8 = null,
 
+    pub fn deinit(self: PlatformIdentifier, allocator: Allocator) void {
+        if (self.os == .linux) {
+            if (self.distro) |distro| allocator.free(distro);
+        }
+    }
+
     pub fn detect(allocator: Allocator, linux_os_release_path: []const u8) !PlatformIdentifier {
         const arch = @tagName(builtin.cpu.arch);
         return switch (builtin.os.tag) {
@@ -218,7 +224,10 @@ test "runtime platform identifier uses linux distro before arch" {
     const path = try dir.dir.realpathAlloc(allocator, "os-release");
     defer allocator.free(path);
 
-    const identifier = try (PlatformIdentifier{ .os = .linux, .distro = try readLinuxDistroId(allocator, path), .arch = "x86_64" }).format(allocator);
+    const runtime_platform = PlatformIdentifier{ .os = .linux, .distro = try readLinuxDistroId(allocator, path), .arch = "x86_64" };
+    defer runtime_platform.deinit(allocator);
+
+    const identifier = try runtime_platform.format(allocator);
     defer allocator.free(identifier);
 
     try std.testing.expectEqualStrings("linux-ubuntu-x86_64", identifier);

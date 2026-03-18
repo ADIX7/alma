@@ -23,11 +23,13 @@ pub const ModuleContext = struct {
         const read = try reader.interface.readSliceShort(&buf2);
         log.debug("Read {d} bytes from configuration file\n'{s}'", .{ read, buf2[0..read] });
 
-        const active_platform = if (module.platform_identifier) |platform_identifier|
-            try platform.PlatformIdentifier.parse(platform_identifier)
-        else
-            try platform.PlatformIdentifier.detect(allocator, module.linux_os_release_path);
+        if (module.platform_identifier) |platform_identifier| {
+            const active_platform = try platform.PlatformIdentifier.parse(platform_identifier);
+            return loadConfigurationFromSource(allocator, buf2[0..read], active_platform);
+        }
 
+        const active_platform = try platform.PlatformIdentifier.detect(allocator, module.linux_os_release_path);
+        defer active_platform.deinit(allocator);
         return loadConfigurationFromSource(allocator, buf2[0..read], active_platform);
     }
 };
