@@ -61,7 +61,7 @@ fn parseArgs(allocator: std.mem.Allocator) !?Command {
 
     const arg = arg_iter.next() orelse return null;
     if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) return Command.help;
-    if (std.mem.eql(u8, arg, "link")) return parseLinkArgs(&arg_iter, allocator);
+    if (std.mem.eql(u8, arg, "link")) return try parseLinkArgs(&arg_iter, allocator);
     return Command{ .unsupported = try allocator.dupe(u8, arg) };
 }
 
@@ -117,7 +117,7 @@ fn printHelp() void {
 
 test "parse link command without dry run" {
     const allocator = std.testing.allocator;
-    var command = try parseLinkArgsSlice(&.{ "dotfiles" }, allocator);
+    var command = try parseLinkArgsSlice(&.{"dotfiles"}, allocator);
     defer command.deinit(allocator);
 
     switch (command) {
