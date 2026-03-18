@@ -47,9 +47,9 @@ fn linkHandlerWithModuleSourcePath(allocator: std.mem.Allocator, command: LinkPa
 
     for (planned_links) |planned_link| {
         if (command.dry_run) {
-            std.debug.print("Would create symlink from {s} to {s}\n", .{ planned_link.source_path, planned_link.target_path });
+            log.info("Would create symlink from {s} to {s}\n", .{ planned_link.source_path, planned_link.target_path });
         } else {
-            std.debug.print("Creating symlink from {s} to {s}\n", .{ planned_link.source_path, planned_link.target_path });
+            log.info("Creating symlink from {s} to {s}\n", .{ planned_link.source_path, planned_link.target_path });
             try createSymlinkAbsolute(planned_link.source_path, planned_link.target_path);
         }
     }
