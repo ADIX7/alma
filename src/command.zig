@@ -3,7 +3,9 @@ const std = @import("std");
 pub const LinkPayload = struct {
     repo: ?[]u8,
     module: []u8,
+    dry_run: bool,
 };
+
 pub const Command = union(enum) {
     unsupported: []u8,
     help,
@@ -16,9 +18,7 @@ pub const Command = union(enum) {
             },
             Command.help => {},
             Command.link => |cmd| {
-                if (cmd.repo) |r| {
-                    allocator.free(r);
-                }
+                if (cmd.repo) |r| allocator.free(r);
                 allocator.free(cmd.module);
             },
         }

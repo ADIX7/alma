@@ -211,7 +211,7 @@ fn isValidDistroValue(value: []const u8) bool {
 test "runtime platform identifier uses linux distro before arch" {
     const allocator = std.testing.allocator;
 
-    const dir = std.testing.tmpDir(.{});
+    var dir = std.testing.tmpDir(.{});
     defer dir.cleanup();
 
     try dir.dir.writeFile(.{ .sub_path = "os-release", .data = "NAME=Ubuntu\nID=ubuntu\n" });
@@ -227,19 +227,19 @@ test "runtime platform identifier uses linux distro before arch" {
 test "windows selectors match os and os arch" {
     const identifier = try PlatformIdentifier.parse("windows-x86_64");
 
-    try std.testing.expect(try PlatformSelector.parse("default").matches(identifier));
-    try std.testing.expect(try PlatformSelector.parse("windows").matches(identifier));
-    try std.testing.expect(try PlatformSelector.parse("windows-x86_64").matches(identifier));
+    try std.testing.expect((try PlatformSelector.parse("default")).matches(identifier));
+    try std.testing.expect((try PlatformSelector.parse("windows")).matches(identifier));
+    try std.testing.expect((try PlatformSelector.parse("windows-x86_64")).matches(identifier));
     try std.testing.expect(!(try PlatformSelector.parse("linux")).matches(identifier));
 }
 
 test "linux selectors match distro hierarchy" {
     const identifier = try PlatformIdentifier.parse("linux-ubuntu-x86_64");
 
-    try std.testing.expect(try PlatformSelector.parse("default").matches(identifier));
-    try std.testing.expect(try PlatformSelector.parse("linux").matches(identifier));
-    try std.testing.expect(try PlatformSelector.parse("linux-ubuntu").matches(identifier));
-    try std.testing.expect(try PlatformSelector.parse("linux-ubuntu-x86_64").matches(identifier));
+    try std.testing.expect((try PlatformSelector.parse("default")).matches(identifier));
+    try std.testing.expect((try PlatformSelector.parse("linux")).matches(identifier));
+    try std.testing.expect((try PlatformSelector.parse("linux-ubuntu")).matches(identifier));
+    try std.testing.expect((try PlatformSelector.parse("linux-ubuntu-x86_64")).matches(identifier));
     try std.testing.expect(!(try PlatformSelector.parse("linux-fedora")).matches(identifier));
     try std.testing.expect(!(try PlatformSelector.parse("linux-x86_64")).matches(identifier));
 }
@@ -247,8 +247,8 @@ test "linux selectors match distro hierarchy" {
 test "linux selectors match linux arch when distro unavailable" {
     const identifier = try PlatformIdentifier.parse("linux-x86_64");
 
-    try std.testing.expect(try PlatformSelector.parse("linux").matches(identifier));
-    try std.testing.expect(try PlatformSelector.parse("linux-x86_64").matches(identifier));
+    try std.testing.expect((try PlatformSelector.parse("linux")).matches(identifier));
+    try std.testing.expect((try PlatformSelector.parse("linux-x86_64")).matches(identifier));
     try std.testing.expect(!(try PlatformSelector.parse("linux-ubuntu")).matches(identifier));
 }
 
