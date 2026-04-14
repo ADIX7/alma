@@ -35,8 +35,6 @@ fn linkHandlerWithModuleSourcePath(allocator: std.mem.Allocator, command: LinkPa
 
     log.debug("Module configuration loaded successfully", .{});
     log.debug("target: {s}", .{module_config.target orelse "-"});
-    log.debug("install: {s}", .{module_config.install orelse "-"});
-    log.debug("configure: {s}", .{module_config.configure orelse "-"});
 
     const planned_links = try buildPlannedLinks(allocator, module_source_path, module_config);
     defer freePlannedLinks(allocator, planned_links);
@@ -53,9 +51,6 @@ fn linkHandlerWithModuleSourcePath(allocator: std.mem.Allocator, command: LinkPa
             try createSymlinkAbsolute(planned_link.source_path, planned_link.target_path);
         }
     }
-
-    try reportModuleCommand(command.dry_run, "install", module_config.install);
-    try reportModuleCommand(command.dry_run, "configure", module_config.configure);
 }
 
 fn buildPlannedLinks(allocator: std.mem.Allocator, module_source_path: []const u8, module_config: *const module.ModuleConfiguration) ![]PlannedLink {
@@ -101,16 +96,6 @@ fn freePlannedLinks(allocator: std.mem.Allocator, planned_links: []PlannedLink) 
         allocator.free(planned_link.target_path);
     }
     allocator.free(planned_links);
-}
-
-fn reportModuleCommand(dry_run: bool, label: []const u8, command: ?[]const u8) !void {
-    const value = command orelse return;
-    if (dry_run) {
-        std.debug.print("Would run {s} command: {s}\n", .{ label, value });
-        return;
-    }
-
-    std.debug.print("Skipping {s} command execution (not implemented): {s}\n", .{ label, value });
 }
 
 fn createSymlinkAbsolute(source_path: []const u8, target_path: []const u8) !void {
