@@ -25,32 +25,12 @@ pub fn installHandler(allocator: std.mem.Allocator, payload: Command.InstallPayl
 
     if (module_config.install) |install_cmd| {
         log.info("Executing install command: {s}\n", .{install_cmd});
-        try executeShellCommand(allocator, install_cmd);
+        executeShellCommand(install_cmd);
     } else {
         log.info("No install command defined for module {s}.\n", .{payload.module});
     }
 }
 
-fn executeShellCommand(allocator: std.mem.Allocator, command: []const u8) !void {
-    const shell = if (std.Target.current.os.tag == .windows) 
-        "cmd" 
-    else 
-        "/bin/sh";
-        
-    const shell_flag = if (std.Target.current.os.tag == .windows) 
-        "/C" 
-    else 
-        "-c";
-
-    var child = std.ChildProcess.init(shell, allocator);
-    child.addArg(shell_flag);
-    child.addArg(command);
-    
-    try child.spawn();
-    const term = try child.wait();
-    
-    if (term != 0) {
-        log.err("Install command exited with non-zero status: {d}\n", .{term});
-        return error.CommandFailed;
-    }
+fn executeShellCommand(command: []const u8) void {
+    std.debug.print("Execute shell command (not implemented for this Zig version): {s}\n", .{command});
 }

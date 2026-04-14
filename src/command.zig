@@ -12,11 +12,17 @@ pub const LinkPayload = struct {
     dry_run: bool,
 };
 
+pub const ConfigurePayload = struct {
+    repo: ?[]u8,
+    module: []u8,
+};
+
 pub const Command = union(enum) {
     unsupported: []u8,
     help,
     link: LinkPayload,
     install: InstallPayload,
+    configure: ConfigurePayload,
 
     pub fn deinit(self: Command, allocator: std.mem.Allocator) void {
         switch (self) {
@@ -29,6 +35,10 @@ pub const Command = union(enum) {
                 allocator.free(cmd.module);
             },
             Command.install => |cmd| {
+                if (cmd.repo) |r| allocator.free(r);
+                allocator.free(cmd.module);
+            },
+            Command.configure => |cmd| {
                 if (cmd.repo) |r| allocator.free(r);
                 allocator.free(cmd.module);
             },
