@@ -25,8 +25,12 @@ pub fn installHandler(allocator: std.mem.Allocator, payload: Command.InstallPayl
     defer module_config.deinit();
 
     if (module_config.install) |install_cmd| {
-        log.info("Executing install command: {s}\n", .{install_cmd});
-        try shell.executeShellCommand(install_cmd);
+        if (payload.dry_run) {
+            log.info("Would execute install command: {s}\n", .{install_cmd});
+        } else {
+            log.info("Executing install command: {s}\n", .{install_cmd});
+            try shell.executeShellCommand(install_cmd);
+        }
     } else {
         log.info("No install command defined for module {s}.\n", .{payload.module});
     }

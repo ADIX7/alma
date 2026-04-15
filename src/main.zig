@@ -26,6 +26,16 @@ pub fn main() !void {
                 printHelp();
                 return;
             },
+            error.UnknownInstallFlag => {
+                log.info("Error: Unknown install flag\n\n", .{});
+                printHelp();
+                return;
+            },
+            error.ConfigureUnknownFlag => {
+                log.info("Error: Unknown configure flag\n\n", .{});
+                printHelp();
+                return;
+            },
             else => {
                 log.info("Error: Unknown error\n", .{});
                 return;
@@ -90,6 +100,7 @@ fn parseInstallArgs(arg_iter: *std.process.ArgIterator, allocator: std.mem.Alloc
 }
 
 fn parseInstallArgsSlice(args: []const []const u8, allocator: std.mem.Allocator) !Command {
+    var dry_run = false;
     var repo_name: ?[]u8 = null;
     var module_name: ?[]u8 = null;
     errdefer {
@@ -98,6 +109,14 @@ fn parseInstallArgsSlice(args: []const []const u8, allocator: std.mem.Allocator)
     }
 
     for (args) |arg| {
+        if (std.mem.startsWith(u8, arg, "-")) {
+            if (std.mem.eql(u8, arg, "-d")) {
+                dry_run = true;
+                continue;
+            }
+            return error.UnknownInstallFlag;
+        }
+
         if (module_name) |existing_module| {
             repo_name = existing_module;
             module_name = try allocator.dupe(u8, arg);
@@ -111,7 +130,8 @@ fn parseInstallArgsSlice(args: []const []const u8, allocator: std.mem.Allocator)
     return Command{ .install = .{
         .repo = repo_name,
         .module = module_name.?,
-    } };
+        .dry_run = dry_run,
+    }};
 }
 
 fn parseLinkArgs(arg_iter: *std.process.ArgIterator, allocator: std.mem.Allocator) !Command {
@@ -154,7 +174,7 @@ fn parseLinkArgsSlice(args: []const []const u8, allocator: std.mem.Allocator) !C
         .repo = repo_name,
         .module = module_name.?,
         .dry_run = dry_run,
-    } };
+    }};
 }
 
 fn parseConfigureArgs(arg_iter: *std.process.ArgIterator, allocator: std.mem.Allocator) !Command {
@@ -166,6 +186,7 @@ fn parseConfigureArgs(arg_iter: *std.process.ArgIterator, allocator: std.mem.All
 }
 
 fn parseConfigureArgsSlice(args: []const []const u8, allocator: std.mem.Allocator) !Command {
+    var dry_run = false;
     var repo_name: ?[]u8 = null;
     var module_name: ?[]u8 = null;
     errdefer {
@@ -174,6 +195,14 @@ fn parseConfigureArgsSlice(args: []const []const u8, allocator: std.mem.Allocato
     }
 
     for (args) |arg| {
+        if (std.mem.startsWith(u8, arg, "-")) {
+            if (std.mem.eql(u8, arg, "-d")) {
+                dry_run = true;
+                continue;
+            }
+            return error.ConfigureUnknownFlag;
+        }
+
         if (module_name) |existing_module| {
             repo_name = existing_module;
             module_name = try allocator.dupe(u8, arg);
@@ -187,14 +216,17 @@ fn parseConfigureArgsSlice(args: []const []const u8, allocator: std.mem.Allocato
     return Command{ .configure = .{
         .repo = repo_name,
         .module = module_name.?,
-    } };
+        .dry_run = dry_run,
+    }};
 }
 
 fn printHelp() void {
     log.info("Usage: alma <command> [options]\n", .{});
     log.info("Commands:\n", .{});
-    log.info("  link [-d] [repo] <module>   Link a module from an optional repo\n", .{});
-    log.info("  install [repo] <module>     Install a module from an optional repo\n", .{});
-    log.info("  configure [repo] <module>   Configure a module from an optional repo\n", .{});
-    log.info("  --help, -h                  Show this help message\n", .{});
+    log.info("  link [-d] [repo] <module>           Link a module from an optional repo\n", .{});
+    log.info("  install [-d] [repo] <module>        Install a module from an optional repo\n", .{});
+    log.info("  configure [-d] [repo] <module>      Configure a module from an optional repo\n", .{});
+    log.info("  --help, -h                          Show this help message\n", .{});
+    log.info("\nOptions:\n", .{});
+    log.info("  -d                                   Dry run - show what would be executed\n", .{});
 }

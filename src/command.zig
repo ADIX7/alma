@@ -3,6 +3,7 @@ const std = @import("std");
 pub const InstallPayload = struct {
     repo: ?[]u8,
     module: []u8,
+    dry_run: bool,
 };
 
 pub const LinkPayload = struct {
@@ -15,6 +16,7 @@ pub const LinkPayload = struct {
 pub const ConfigurePayload = struct {
     repo: ?[]u8,
     module: []u8,
+    dry_run: bool,
 };
 
 pub const Command = union(enum) {

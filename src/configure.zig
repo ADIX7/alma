@@ -25,8 +25,12 @@ pub fn configureHandler(allocator: std.mem.Allocator, payload: Command.Configure
     defer module_config.deinit();
 
     if (module_config.configure) |configure_cmd| {
-        log.info("Executing configure command: {s}\n", .{configure_cmd});
-        try shell.executeShellCommand(configure_cmd);
+        if (payload.dry_run) {
+            log.info("Would execute configure command: {s}\n", .{configure_cmd});
+        } else {
+            log.info("Executing configure command: {s}\n", .{configure_cmd});
+            try shell.executeShellCommand(configure_cmd);
+        }
     } else {
         log.info("No configure command defined for module {s}.\n", .{payload.module});
     }
