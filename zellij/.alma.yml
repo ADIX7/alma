@@ -4,4 +4,4 @@ platforms:
     exclude:
       - scripts
   - platform: linux-alpine
-    install: curl https://api.github.com/repos/zellij-org/zellij/releases | jq -c '.[0].assets | .[] | select(.name | contains("x86_64-unknown-linux-musl.tar.gz")) | .browser_download_url' | xargs curl -s -L | sudo tar xvz -C /usr/local/bin -v "zellij" && sudo chmod +x /usr/local/bin/zellij
+    install: 'curl https://api.github.com/repos/zellij-org/zellij/releases | jq -c ".[0].assets | .[] | select(.name | contains(\"x86_64-unknown-linux-musl.tar.gz\")) | .browser_download_url" | xargs curl -s -L | sudo tar xvz -C /usr/local/bin -v "zellij" && sudo chmod +x /usr/local/bin/zellij'
