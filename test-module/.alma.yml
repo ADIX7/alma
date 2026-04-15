@@ -1,0 +1,8 @@
+platforms:
+  - platform: default
+    target: "$HOME"
+    install: 'echo "Installing test module..."'
+    configure: 'echo "Configuring test module..."'
+    links:
+      - source: test-file.txt
+        target: .test-file

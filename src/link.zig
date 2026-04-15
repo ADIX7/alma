@@ -10,7 +10,7 @@ const PlannedLink = struct {
 };
 
 pub fn linkHandler(allocator: std.mem.Allocator, command: LinkPayload) !void {
-    const module_source_path = try std.fmt.allocPrint(allocator, "/home/adam/dotconfig/{s}", .{command.module});
+    const module_source_path = try std.fmt.allocPrint(allocator, ".{s}{s}", .{std.fs.path.sep_str, command.module});
     defer allocator.free(module_source_path);
 
     try linkHandlerWithModuleSourcePath(allocator, command, module_source_path);

@@ -4,7 +4,7 @@ const Command = @import("command.zig");
 const log = std.log.scoped(.alma);
 
 pub fn installHandler(allocator: std.mem.Allocator, payload: Command.InstallPayload) !void {
-    const module_source_path = try std.fmt.allocPrint(allocator, "/home/adam/dotconfig/{s}", .{payload.module});
+    const module_source_path = try std.fmt.allocPrint(allocator, ".{s}{s}", .{std.fs.path.sep_str, payload.module});
     defer allocator.free(module_source_path);
 
     const context = module.ModuleContext{
