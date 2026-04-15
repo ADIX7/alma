@@ -1,0 +1,4 @@
+platforms:
+  - platform: default
+    install: "/bin/echo Hello from Alma install!"
+    configure: "/bin/echo Hello from Alma configure!"

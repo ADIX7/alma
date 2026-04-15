@@ -1,6 +1,7 @@
 const std = @import("std");
 const module = @import("module.zig");
 const Command = @import("command.zig");
+const shell = @import("shell.zig");
 const log = std.log.scoped(.alma);
 
 pub fn installHandler(allocator: std.mem.Allocator, payload: Command.InstallPayload) !void {
@@ -25,12 +26,9 @@ pub fn installHandler(allocator: std.mem.Allocator, payload: Command.InstallPayl
 
     if (module_config.install) |install_cmd| {
         log.info("Executing install command: {s}\n", .{install_cmd});
-        executeShellCommand(install_cmd);
+        try shell.executeShellCommand(install_cmd);
     } else {
         log.info("No install command defined for module {s}.\n", .{payload.module});
     }
 }
 
-fn executeShellCommand(command: []const u8) void {
-    std.debug.print("Execute shell command (not implemented for this Zig version): {s}\n", .{command});
-}

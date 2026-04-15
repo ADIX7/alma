@@ -1,6 +1,7 @@
 const std = @import("std");
 const module = @import("module.zig");
 const Command = @import("command.zig");
+const shell = @import("shell.zig");
 const log = std.log.scoped(.alma);
 
 pub fn configureHandler(allocator: std.mem.Allocator, payload: Command.ConfigurePayload) !void {
@@ -25,14 +26,9 @@ pub fn configureHandler(allocator: std.mem.Allocator, payload: Command.Configure
 
     if (module_config.configure) |configure_cmd| {
         log.info("Executing configure command: {s}\n", .{configure_cmd});
-        try executeShellCommand(configure_cmd);
+        try shell.executeShellCommand(configure_cmd);
     } else {
         log.info("No configure command defined for module {s}.\n", .{payload.module});
     }
 }
 
-fn executeShellCommand(command: []const u8) !void {
-    std.debug.print("Executing configure command: {s}\n", .{command});
-    // For now, just log the command. Full implementation would use
-    // std.ChildProcess.init() when Zig version supports it properly.
-}
