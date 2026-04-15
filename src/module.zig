@@ -44,9 +44,12 @@ pub const ModuleConfigurationBuilder = struct {
     links: std.ArrayList(Link) = .empty,
     install: ?[]const u8 = null,
     configure: ?[]const u8 = null,
+    exclude: std.ArrayList([]const u8) = .empty,
+    exclude_readme: bool = false,
 
     pub fn deinit(self: *ModuleConfigurationBuilder) void {
         self.links.deinit(std.heap.page_allocator);
+        self.exclude.deinit(std.heap.page_allocator);
     }
 };
 
@@ -56,6 +59,8 @@ pub const ModuleConfiguration = struct {
     links: ?[]Link = null,
     install: ?[]u8 = null,
     configure: ?[]u8 = null,
+    exclude: ?[]const []const u8 = null,
+    exclude_readme: bool = false,
 
     pub fn deinit(self: *ModuleConfiguration) void {
         if (self.target) |t| self.allocator.free(t);
@@ -70,6 +75,11 @@ pub const ModuleConfiguration = struct {
 
         if (self.install) |install| self.allocator.free(install);
         if (self.configure) |configure| self.allocator.free(configure);
+
+        if (self.exclude) |excludes| {
+            for (excludes) |ex| self.allocator.free(ex);
+            self.allocator.free(excludes);
+        }
     }
 };
 
@@ -79,6 +89,8 @@ pub const ModuleConfigurationPart = struct {
     links: ?[]Link = null,
     install: ?[]u8 = null,
     configure: ?[]u8 = null,
+    exclude: ?[]const []const u8 = null,
+    exclude_readme: bool = false,
 };
 
 pub const ModuleConfigurartionRoot = struct {
@@ -126,6 +138,14 @@ fn loadConfigurationFromSource(allocator: Allocator, source: []const u8, active_
             }
         }
 
+        if (value.exclude) |excludes| {
+            for (excludes) |ex| try configuration_builder.exclude.append(arena, ex);
+        }
+
+        if (value.exclude_readme) {
+            configuration_builder.exclude_readme = true;
+        }
+
         if (value.target) |target| configuration_builder.target = target;
         if (value.install) |install| configuration_builder.install = install;
         if (value.configure) |configure| configuration_builder.configure = configure;
@@ -148,6 +168,15 @@ fn loadConfigurationFromSource(allocator: Allocator, source: []const u8, active_
         },
         .install = if (configuration_builder.install) |install| try allocator.dupe(u8, install) else null,
         .configure = if (configuration_builder.configure) |configure| try allocator.dupe(u8, configure) else null,
+        .exclude = blk: {
+            if (configuration_builder.exclude.items.len == 0) break :blk null;
+            const slice = try allocator.alloc([]const u8, configuration_builder.exclude.items.len);
+            for (configuration_builder.exclude.items, 0..) |ex, i| {
+                slice[i] = try allocator.dupe(u8, ex);
+            }
+            break :blk slice;
+        },
+        .exclude_readme = configuration_builder.exclude_readme,
     };
     return configuration;
 }

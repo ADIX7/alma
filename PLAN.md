@@ -4,8 +4,10 @@ Goal: Transition `alma-zig` from an explicit-only linking strategy to a hybrid s
 
 ## Phase 1: Configuration Schema Update
 - [ ] **Step 1: Add Exclusions to `ModuleConfiguration`**
-    - Update `src/module.zig` to include `exclude: ?[]const []const u8` and `exclude_readme: bool`.
-    - Update YAML decoding logic to map `exclude` and `exclude_readme` from `.alma.yml`.
+    - Update `src/module.zig` to include `exclude: ?[]const []const u8` and `exclude_readme: bool` in `ModuleConfiguration`, `ModuleConfigurationBuilder`, and `ModuleConfigurationPart`.
+    - Implement additive merging for `exclude` and boolean OR for `exclude_readme` in `loadConfigurationFromSource`.
+    - Update `ModuleConfiguration.deinit` to properly free the `exclude` list and its elements.
+    - Update YAML decoding logic to map these fields from `.alma.yml`.
 
 ## Phase 2: Recursive Gathering Logic
 - [ ] **Step 2: Implement `gatherItemsToLink` with `ArrayList`**
