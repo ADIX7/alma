@@ -182,13 +182,22 @@ fn joinRel(allocator: std.mem.Allocator, rel_path: []const u8, name: []const u8)
 }
 
 fn createSymlinkAbsolute(source_path: []const u8, target_path: []const u8) !void {
-    if (std.fs.path.isAbsolute(target_path)) {
-        if (std.fs.path.dirname(target_path)) |target_dir| try std.fs.cwd().makePath(target_dir);
-        try std.fs.symLinkAbsolute(source_path, target_path, .{});
-        return;
-    }
+    if (!std.fs.path.isAbsolute(target_path)) return error.RelativeTargetPathUnsupported;
 
-    return error.RelativeTargetPathUnsupported;
+    try ensureParentDirectories(target_path);
+    try std.fs.symLinkAbsolute(source_path, target_path, .{});
+}
+
+fn ensureParentDirectories(target_path: []const u8) !void {
+    const target_dir = std.fs.path.dirname(target_path) orelse return;
+    if (target_dir.len == 0) return;
+
+    std.fs.cwd().makePath(target_dir) catch {
+        // makePath tolerates existing directories; reaching here means a path
+        // component is occupied by a non-directory.
+        if (std.fs.isDirAbsolute(target_dir)) return;
+        return error.TargetParentIsFile;
+    };
 }
 
 fn resolvePath(allocator: std.mem.Allocator, relative_part: []const u8, path: []const u8) ![]const u8 {
@@ -383,6 +392,41 @@ test "gatherItemsToLink applies exclusion filters" {
 
     try std.testing.expectEqual(@as(usize, 1), planned.items.len);
     try std.testing.expect(std.mem.endsWith(u8, planned.items[0].source_path, "keep/nested/stay.txt"));
+}
+
+test "createSymlinkAbsolute creates nested target parents" {
+    const allocator = std.testing.allocator;
+    var dir = std.testing.tmpDir(.{});
+    defer dir.cleanup();
+
+    try dir.dir.writeFile(.{ .sub_path = "source.txt", .data = "" });
+    const source_path = try dir.dir.realpathAlloc(allocator, "source.txt");
+    defer allocator.free(source_path);
+    const base_path = try dir.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(base_path);
+    const target_path = try std.fmt.allocPrint(allocator, "{s}/a/b/c/d/link.txt", .{base_path});
+    defer allocator.free(target_path);
+
+    try createSymlinkAbsolute(source_path, target_path);
+    const stat = try std.fs.lstatAbsolute(target_path);
+    try std.testing.expectEqual(std.fs.Stat.Kind.Symlink, stat.kind);
+}
+
+test "createSymlinkAbsolute rejects file occupying target parent" {
+    const allocator = std.testing.allocator;
+    var dir = std.testing.tmpDir(.{});
+    defer dir.cleanup();
+
+    try dir.dir.writeFile(.{ .sub_path = "source.txt", .data = "" });
+    try dir.dir.writeFile(.{ .sub_path = "blocked", .data = "" });
+    const source_path = try dir.dir.realpathAlloc(allocator, "source.txt");
+    defer allocator.free(source_path);
+    const base_path = try dir.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(base_path);
+    const target_path = try std.fmt.allocPrint(allocator, "{s}/blocked/link.txt", .{base_path});
+    defer allocator.free(target_path);
+
+    try std.testing.expectError(error.TargetParentIsFile, createSymlinkAbsolute(source_path, target_path));
 }
 
 test "dry run preserves configuration errors" {
