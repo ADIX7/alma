@@ -24,7 +24,7 @@ Goal: Transition `alma-zig` from an explicit-only linking strategy to a hybrid s
         - Readme: Exclude common README filenames if `exclude_readme` is true.
 
 ## Phase 3: Execution & Pathing
-- [ ] **Step 4: Integrate Gatherer into `linkHandler`**
+- [x] **Step 4: Integrate Gatherer into `linkHandler`**
     - Update `linkHandlerWithModuleSourcePath` to use the new recursive gatherer.
     - Ensure proper memory management for the `ArrayList` and duplicated strings.
 - [ ] **Step 5: Robust Target Path Creation**

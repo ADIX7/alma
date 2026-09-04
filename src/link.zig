@@ -36,14 +36,14 @@ fn linkHandlerWithModuleSourcePath(allocator: std.mem.Allocator, command: LinkPa
     log.debug("Module configuration loaded successfully", .{});
     log.debug("target: {s}", .{module_config.target orelse "-"});
 
-    const planned_links = try buildPlannedLinks(allocator, module_source_path, module_config);
-    defer freePlannedLinks(allocator, planned_links);
+    const planned_links = try gatherItemsToLink(allocator, module_source_path, module_config);
+    defer freeGatheredPlannedLinks(allocator, planned_links);
 
-    if (planned_links.len == 0) {
+    if (planned_links.items.len == 0) {
         log.info("No links defined.", .{});
     }
 
-    for (planned_links) |planned_link| {
+    for (planned_links.items) |planned_link| {
         if (command.dry_run) {
             log.info("Would create symlink from {s} to {s}\n", .{ planned_link.source_path, planned_link.target_path });
         } else {
@@ -51,51 +51,6 @@ fn linkHandlerWithModuleSourcePath(allocator: std.mem.Allocator, command: LinkPa
             try createSymlinkAbsolute(planned_link.source_path, planned_link.target_path);
         }
     }
-}
-
-fn buildPlannedLinks(allocator: std.mem.Allocator, module_source_path: []const u8, module_config: *const module.ModuleConfiguration) ![]PlannedLink {
-    const links = module_config.links orelse return try allocator.alloc(PlannedLink, 0);
-
-    var planned_links = try allocator.alloc(PlannedLink, links.len);
-    var built_count: usize = 0;
-    errdefer {
-        for (planned_links[0..built_count]) |planned_link| {
-            allocator.free(planned_link.source_path);
-            allocator.free(planned_link.target_path);
-        }
-        allocator.free(planned_links);
-    }
-
-    for (links, 0..) |link, i| {
-        const source_path = try resolvePath(allocator, module_source_path, link.source);
-        errdefer allocator.free(source_path);
-
-        const target_path = try resolvePath(allocator, module_config.target orelse ".", link.target);
-        errdefer allocator.free(target_path);
-
-        if (std.mem.eql(u8, source_path, target_path)) {
-            log.err("Source path and target path are the same: {s}\n", .{source_path});
-            allocator.free(source_path);
-            allocator.free(target_path);
-            return error.InvalidLinkTarget;
-        }
-
-        planned_links[i] = .{
-            .source_path = source_path,
-            .target_path = target_path,
-        };
-        built_count += 1;
-    }
-
-    return planned_links;
-}
-
-fn freePlannedLinks(allocator: std.mem.Allocator, planned_links: []PlannedLink) void {
-    for (planned_links) |planned_link| {
-        allocator.free(planned_link.source_path);
-        allocator.free(planned_link.target_path);
-    }
-    allocator.free(planned_links);
 }
 
 pub fn freeGatheredPlannedLinks(allocator: std.mem.Allocator, planned_links: *std.ArrayList(PlannedLink)) void {
@@ -177,6 +132,15 @@ fn gatherDir(
                 const target_path = try resolvePath(allocator, module_config.target orelse ".", explicit_target orelse rel);
                 errdefer allocator.free(target_path);
 
+                if (std.mem.eql(u8, source_path, target_path)) {
+                    log.err("Source path and target path are the same: {s}\n", .{source_path});
+                    allocator.free(source_path);
+                    allocator.free(target_path);
+                    if (rel_path.len != 0) allocator.free(rel);
+                    if (explicit_target) |t| allocator.free(t);
+                    return error.InvalidLinkTarget;
+                }
+
                 try planned.append(.{ .source_path = source_path, .target_path = target_path });
                 allocator.free(source_path);
                 if (rel_path.len != 0) allocator.free(rel);
@@ -250,51 +214,24 @@ fn specialPathResolver(allocator: std.mem.Allocator, path: []const u8) !struct {
     return .{ .processed = false, .path = path };
 }
 
-test "build planned links resolves module and target paths" {
+test "gatherItemsToLink rejects identical source and target" {
     const allocator = std.testing.allocator;
+    var dir = std.testing.tmpDir(.{});
+    defer dir.cleanup();
+
+    try dir.dir.writeFile(.{ .sub_path = "module/same.txt", .data = "" });
+    const module_source_path = try dir.dir.realpathAlloc(allocator, "module");
+    defer allocator.free(module_source_path);
+
     const config = try allocator.create(module.ModuleConfiguration);
     defer allocator.destroy(config);
-
-    const links = try allocator.alloc(module.Link, 1);
-    links[0] = .{
-        .source = try allocator.dupe(u8, "nvim/init.lua"),
-        .target = try allocator.dupe(u8, "config/init.lua"),
-    };
-
     config.* = .{
         .allocator = allocator,
-        .target = try allocator.dupe(u8, "/tmp/alma-target"),
-        .links = links,
+        .target = module_source_path,
     };
     defer config.deinit();
 
-    const planned_links = try buildPlannedLinks(allocator, "/tmp/alma-module", config);
-    defer freePlannedLinks(allocator, planned_links);
-
-    try std.testing.expectEqual(@as(usize, 1), planned_links.len);
-    try std.testing.expectEqualStrings("/tmp/alma-module/nvim/init.lua", planned_links[0].source_path);
-    try std.testing.expectEqualStrings("/tmp/alma-target/config/init.lua", planned_links[0].target_path);
-}
-
-test "build planned links rejects identical source and target" {
-    const allocator = std.testing.allocator;
-    const config = try allocator.create(module.ModuleConfiguration);
-    defer allocator.destroy(config);
-
-    const links = try allocator.alloc(module.Link, 1);
-    links[0] = .{
-        .source = try allocator.dupe(u8, "same"),
-        .target = try allocator.dupe(u8, "same"),
-    };
-
-    config.* = .{
-        .allocator = allocator,
-        .target = try allocator.dupe(u8, "/tmp/alma-module"),
-        .links = links,
-    };
-    defer config.deinit();
-
-    try std.testing.expectError(error.InvalidLinkTarget, buildPlannedLinks(allocator, "/tmp/alma-module", config));
+    try std.testing.expectError(error.InvalidLinkTarget, gatherItemsToLink(allocator, module_source_path, config));
 }
 
 test "dry run does not create symlink" {
