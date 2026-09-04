@@ -3,14 +3,14 @@
 Goal: Transition `alma-zig` from an explicit-only linking strategy to a hybrid strategy that recursively mirrors the module directory to the target, while respecting explicit overrides and exclusion rules.
 
 ## Phase 1: Configuration Schema Update
-- [ ] **Step 1: Add Exclusions to `ModuleConfiguration`**
+- [x] **Step 1: Add Exclusions to `ModuleConfiguration`**
     - Update `src/module.zig` to include `exclude: ?[]const []const u8` and `exclude_readme: bool` in `ModuleConfiguration`, `ModuleConfigurationBuilder`, and `ModuleConfigurationPart`.
     - Implement additive merging for `exclude` and boolean OR for `exclude_readme` in `loadConfigurationFromSource`.
     - Update `ModuleConfiguration.deinit` to properly free the `exclude` list and its elements.
     - Update YAML decoding logic to map these fields from `.alma.yml`.
 
 ## Phase 2: Recursive Gathering Logic
-- [ ] **Step 2: Implement `gatherItemsToLink` with `ArrayList`**
+- [x] **Step 2: Implement `gatherItemsToLink` with `ArrayList`**
     - In `src/link.zig`, implement a recursive walker using `std.fs.Dir.iterate()`.
     - For each entry:
         - Calculate the relative path from the module root.

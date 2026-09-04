@@ -98,6 +98,91 @@ fn freePlannedLinks(allocator: std.mem.Allocator, planned_links: []PlannedLink) 
     allocator.free(planned_links);
 }
 
+pub fn freeGatheredPlannedLinks(allocator: std.mem.Allocator, planned_links: *std.ArrayList(PlannedLink)) void {
+    for (planned_links.items) |planned_link| {
+        allocator.free(planned_link.source_path);
+        allocator.free(planned_link.target_path);
+    }
+    planned_links.deinit();
+}
+
+/// Recursively walks the module directory and plans a symlink for every file.
+/// Explicit `links` entries override the mirrored target path when their source
+/// matches the file's relative path.
+fn gatherItemsToLink(
+    allocator: std.mem.Allocator,
+    module_source_path: []const u8,
+    module_config: *const module.ModuleConfiguration,
+) !*std.ArrayList(PlannedLink) {
+    var planned = std.ArrayList(PlannedLink).init(allocator);
+    errdefer planned.deinit();
+
+    try gatherDir(allocator, module_source_path, "", module_config, &planned);
+    return &planned;
+}
+
+fn gatherDir(
+    allocator: std.mem.Allocator,
+    dir_path: []const u8,
+    rel_path: []const u8,
+    module_config: *const module.ModuleConfiguration,
+    planned: *std.ArrayList(PlannedLink),
+) !void {
+    var dir = try std.fs.openDirAbsolute(dir_path, .{ .iterate = .{ .follow_links = false } });
+    defer dir.close();
+    var iter = dir.iterate();
+
+    while (try iter.next()) |entry| {
+        switch (entry.kind) {
+            .directory => {
+                const child_rel = try joinRel(allocator, rel_path, entry.name);
+                errdefer allocator.free(child_rel);
+                const child_path = try std.fs.path.join(allocator, &[_][]const u8{ dir_path, entry.name });
+                errdefer allocator.free(child_path);
+                try gatherDir(allocator, child_path, child_rel, module_config, planned);
+                allocator.free(child_path);
+            },
+            .file => {
+                const rel = if (rel_path.len == 0)
+                    entry.name
+                else
+                    try std.fs.path.join(allocator, &[_][]const u8{ rel_path, entry.name });
+                var explicit_target: ?[]const u8 = null;
+                errdefer {
+                    if (rel_path.len != 0) allocator.free(rel);
+                    if (explicit_target) |t| allocator.free(t);
+                }
+
+                const source_path = try std.fs.path.join(allocator, &[_][]const u8{ dir_path, entry.name });
+                errdefer allocator.free(source_path);
+
+                if (findExplicitTarget(module_config, rel)) |target| explicit_target = try allocator.dupe(u8, target);
+                const target_path = try resolvePath(allocator, module_config.target orelse ".", explicit_target orelse rel);
+                errdefer allocator.free(target_path);
+
+                try planned.append(.{ .source_path = source_path, .target_path = target_path });
+                allocator.free(source_path);
+                if (rel_path.len != 0) allocator.free(rel);
+                if (explicit_target) |t| allocator.free(t);
+            },
+            else => {},
+        }
+    }
+}
+
+fn findExplicitTarget(module_config: *const module.ModuleConfiguration, rel_path: []const u8) ?[]const u8 {
+    const links = module_config.links orelse return null;
+    for (links) |link| {
+        if (std.mem.eql(u8, link.source, rel_path)) return link.target;
+    }
+    return null;
+}
+
+fn joinRel(allocator: std.mem.Allocator, rel_path: []const u8, name: []const u8) ![]const u8 {
+    if (rel_path.len == 0) return try allocator.dupe(u8, name);
+    return std.fs.path.join(allocator, &[_][]const u8{ rel_path, name });
+}
+
 fn createSymlinkAbsolute(source_path: []const u8, target_path: []const u8) !void {
     if (std.fs.path.isAbsolute(target_path)) {
         if (std.fs.path.dirname(target_path)) |target_dir| try std.fs.cwd().makePath(target_dir);
@@ -238,6 +323,59 @@ test "normal mode creates symlink" {
     const created_path = try std.fmt.allocPrint(allocator, "{s}/config/init.lua", .{target_path});
     defer allocator.free(created_path);
     try std.fs.accessAbsolute(created_path, .{});
+}
+
+test "gatherItemsToLink mirrors nested files and applies explicit overrides" {
+    const allocator = std.testing.allocator;
+    var dir = std.testing.tmpDir(.{});
+    defer dir.cleanup();
+
+    try dir.dir.makePath("module/nvim/lsp");
+    try dir.dir.writeFile(.{ .sub_path = "module/nvim/init.lua", .data = "" });
+    try dir.dir.writeFile(.{ .sub_path = "module/nvim/lsp/kick.lua", .data = "" });
+    try dir.dir.writeFile(.{ .sub_path = "module/top.txt", .data = "" });
+
+    const module_source_path = try dir.dir.realpathAlloc(allocator, "module");
+    defer allocator.free(module_source_path);
+    const target_path = try dir.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(target_path);
+
+    const config = try allocator.create(module.ModuleConfiguration);
+    defer allocator.destroy(config);
+    const links = try allocator.alloc(module.Link, 1);
+    links[0] = .{
+        .source = try allocator.dupe(u8, "nvim/init.lua"),
+        .target = try allocator.dupe(u8, "alt/init.lua"),
+    };
+    config.* = .{
+        .allocator = allocator,
+        .target = try allocator.dupe(u8, target_path),
+        .links = links,
+    };
+    defer config.deinit();
+
+    const planned = try gatherItemsToLink(allocator, module_source_path, config);
+    defer freeGatheredPlannedLinks(allocator, planned);
+
+    try std.testing.expectEqual(@as(usize, 3), planned.items.len);
+
+    const found = blk: {
+        for (planned.items) |planned_link| {
+            if (std.mem.endsWith(u8, planned_link.source_path, "lsp/kick.lua")) break :blk planned_link;
+        }
+        @panic("mirrored nested file not found");
+    };
+    try std.testing.expect(std.mem.endsWith(u8, found.target_path, "/lsp/kick.lua"));
+
+    const overridden = blk: {
+        for (planned.items) |planned_link| {
+            if (std.mem.endsWith(u8, planned_link.source_path, "nvim/init.lua")) break :blk planned_link;
+        }
+        @panic("overridden file not found");
+    };
+    const expected_target = try std.fs.path.join(allocator, &[_][]const u8{ target_path, "alt/init.lua" });
+    defer allocator.free(expected_target);
+    try std.testing.expectEqualStrings(expected_target, overridden.target_path);
 }
 
 test "dry run preserves configuration errors" {
