@@ -133,16 +133,24 @@ fn gatherDir(
     var iter = dir.iterate();
 
     while (try iter.next()) |entry| {
+        if (entry.kind == .directory and std.mem.eql(u8, entry.name, ".git")) continue;
+
         switch (entry.kind) {
             .directory => {
                 const child_rel = try joinRel(allocator, rel_path, entry.name);
                 errdefer allocator.free(child_rel);
+                if (isExcludedUserPath(module_config, child_rel)) {
+                    allocator.free(child_rel);
+                    continue;
+                }
                 const child_path = try std.fs.path.join(allocator, &[_][]const u8{ dir_path, entry.name });
                 errdefer allocator.free(child_path);
                 try gatherDir(allocator, child_path, child_rel, module_config, planned);
                 allocator.free(child_path);
             },
             .file => {
+                if (std.mem.eql(u8, entry.name, ".alma.yml")) continue;
+
                 const rel = if (rel_path.len == 0)
                     entry.name
                 else
@@ -151,6 +159,15 @@ fn gatherDir(
                 errdefer {
                     if (rel_path.len != 0) allocator.free(rel);
                     if (explicit_target) |t| allocator.free(t);
+                }
+
+                if (isExcludedUserPath(module_config, rel)) {
+                    if (rel_path.len != 0) allocator.free(rel);
+                    continue;
+                }
+                if (module_config.exclude_readme and isReadmeFile(entry.name)) {
+                    if (rel_path.len != 0) allocator.free(rel);
+                    continue;
                 }
 
                 const source_path = try std.fs.path.join(allocator, &[_][]const u8{ dir_path, entry.name });
@@ -176,6 +193,23 @@ fn findExplicitTarget(module_config: *const module.ModuleConfiguration, rel_path
         if (std.mem.eql(u8, link.source, rel_path)) return link.target;
     }
     return null;
+}
+
+/// Matches user-defined exclude entries against a relative path: exact match
+/// (file or directory) or directory prefix (everything under the path).
+fn isExcludedUserPath(module_config: *const module.ModuleConfiguration, rel_path: []const u8) bool {
+    const excludes = module_config.exclude orelse return false;
+    for (excludes) |ex| {
+        if (std.mem.eql(u8, ex, rel_path)) return true;
+        if (rel_path.len > ex.len and std.mem.startsWith(u8, rel_path, ex) and rel_path[ex.len] == '/') return true;
+    }
+    return false;
+}
+
+fn isReadmeFile(name: []const u8) bool {
+    if (name.len < 6) return false;
+    if (!std.ascii.eqlIgnoreCase("readme", name[0..6])) return false;
+    return name.len == 6 or name[6] == '.';
 }
 
 fn joinRel(allocator: std.mem.Allocator, rel_path: []const u8, name: []const u8) ![]const u8 {
@@ -376,6 +410,42 @@ test "gatherItemsToLink mirrors nested files and applies explicit overrides" {
     const expected_target = try std.fs.path.join(allocator, &[_][]const u8{ target_path, "alt/init.lua" });
     defer allocator.free(expected_target);
     try std.testing.expectEqualStrings(expected_target, overridden.target_path);
+}
+
+test "gatherItemsToLink applies exclusion filters" {
+    const allocator = std.testing.allocator;
+    var dir = std.testing.tmpDir(.{});
+    defer dir.cleanup();
+
+    try dir.dir.makePath("module/skipme");
+    try dir.dir.makePath("module/keep/nested");
+    try dir.dir.writeFile(.{ .sub_path = "module/.alma.yml", .data = "" });
+    try dir.dir.writeFile(.{ .sub_path = "module/README.md", .data = "" });
+    try dir.dir.writeFile(.{ .sub_path = "module/skipme/secret.txt", .data = "" });
+    try dir.dir.writeFile(.{ .sub_path = "module/keep/nested/stay.txt", .data = "" });
+
+    const module_source_path = try dir.dir.realpathAlloc(allocator, "module");
+    defer allocator.free(module_source_path);
+    const target_path = try dir.dir.realpathAlloc(allocator, ".");
+    defer allocator.free(target_path);
+
+    const config = try allocator.create(module.ModuleConfiguration);
+    defer allocator.destroy(config);
+    const exclude_slice = try allocator.alloc([]const u8, 1);
+    exclude_slice[0] = try allocator.dupe(u8, "skipme");
+    config.* = .{
+        .allocator = allocator,
+        .target = try allocator.dupe(u8, target_path),
+        .exclude = exclude_slice,
+        .exclude_readme = true,
+    };
+    defer config.deinit();
+
+    const planned = try gatherItemsToLink(allocator, module_source_path, config);
+    defer freeGatheredPlannedLinks(allocator, planned);
+
+    try std.testing.expectEqual(@as(usize, 1), planned.items.len);
+    try std.testing.expect(std.mem.endsWith(u8, planned.items[0].source_path, "keep/nested/stay.txt"));
 }
 
 test "dry run preserves configuration errors" {

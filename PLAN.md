@@ -16,7 +16,7 @@ Goal: Transition `alma-zig` from an explicit-only linking strategy to a hybrid s
         - Calculate the relative path from the module root.
         - Use explicit target if defined in `links` config; otherwise, use the mirrored target path.
         - Store as `PlannedLink` in a `std.ArrayList`.
-- [ ] **Step 3: Implement Exclusion Filtering**
+- [x] **Step 3: Implement Exclusion Filtering**
     - Filter the gathered items:
         - Mandatory: Exclude `.alma.yml`.
         - Safety: Exclude `.git`.
