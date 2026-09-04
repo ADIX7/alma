@@ -429,6 +429,115 @@ test "createSymlinkAbsolute rejects file occupying target parent" {
     try std.testing.expectError(error.TargetParentIsFile, createSymlinkAbsolute(source_path, target_path));
 }
 
+test "link mirrors nested module tree end to end" {
+    const allocator = std.testing.allocator;
+    var dir = std.testing.tmpDir(.{});
+    defer dir.cleanup();
+
+    try dir.dir.makePath("module/nvim/lsp");
+    try dir.dir.writeFile(.{ .sub_path = "module/top.txt", .data = "" });
+    try dir.dir.writeFile(.{ .sub_path = "module/nvim/init.lua", .data = "" });
+    try dir.dir.writeFile(.{ .sub_path = "module/nvim/lsp/kick.lua", .data = "" });
+
+    try dir.dir.makePath("target");
+    const target_path = try dir.dir.realpathAlloc(allocator, "target");
+    defer allocator.free(target_path);
+    const module_source_path = try dir.dir.realpathAlloc(allocator, "module");
+    defer allocator.free(module_source_path);
+
+    const config = try std.fmt.allocPrint(allocator, "platforms:\n  - platform: default\n    target: {s}\n", .{target_path});
+    defer allocator.free(config);
+    try dir.dir.writeFile(.{ .sub_path = "module/.alma.yml", .data = config });
+
+    const module_name = try allocator.dupe(u8, "dotfiles");
+    defer allocator.free(module_name);
+
+    try linkHandlerWithModuleSourcePath(allocator, .{ .repo = null, .module = module_name, .dry_run = false }, module_source_path);
+
+    try expectSymlink(allocator, target_path, "top.txt");
+    try expectSymlink(allocator, target_path, "nvim/init.lua");
+    try expectSymlink(allocator, target_path, "nvim/lsp/kick.lua");
+    try expectMissing(allocator, target_path, ".alma.yml");
+}
+
+test "link explicit override wins over mirrored path" {
+    const allocator = std.testing.allocator;
+    var dir = std.testing.tmpDir(.{});
+    defer dir.cleanup();
+
+    try dir.dir.makePath("module/nvim");
+    try dir.dir.writeFile(.{ .sub_path = "module/nvim/init.lua", .data = "" });
+    try dir.dir.writeFile(.{ .sub_path = "module/other.txt", .data = "" });
+
+    try dir.dir.makePath("target");
+    const target_path = try dir.dir.realpathAlloc(allocator, "target");
+    defer allocator.free(target_path);
+    const module_source_path = try dir.dir.realpathAlloc(allocator, "module");
+    defer allocator.free(module_source_path);
+
+    const config = try std.fmt.allocPrint(allocator,
+        "platforms:\n  - platform: default\n    target: {s}\n    links:\n      - source: nvim/init.lua\n        target: config/init.lua\n",
+        .{target_path},
+    );
+    defer allocator.free(config);
+    try dir.dir.writeFile(.{ .sub_path = "module/.alma.yml", .data = config });
+
+    const module_name = try allocator.dupe(u8, "dotfiles");
+    defer allocator.free(module_name);
+
+    try linkHandlerWithModuleSourcePath(allocator, .{ .repo = null, .module = module_name, .dry_run = false }, module_source_path);
+
+    try expectSymlink(allocator, target_path, "config/init.lua");
+    try expectSymlink(allocator, target_path, "other.txt");
+    try expectMissing(allocator, target_path, "nvim/init.lua");
+}
+
+test "link honors exclude and exclude_readme" {
+    const allocator = std.testing.allocator;
+    var dir = std.testing.tmpDir(.{});
+    defer dir.cleanup();
+
+    try dir.dir.makePath("module/skipme");
+    try dir.dir.writeFile(.{ .sub_path = "module/keep.txt", .data = "" });
+    try dir.dir.writeFile(.{ .sub_path = "module/skipme/x.txt", .data = "" });
+    try dir.dir.writeFile(.{ .sub_path = "module/README.md", .data = "" });
+
+    try dir.dir.makePath("target");
+    const target_path = try dir.dir.realpathAlloc(allocator, "target");
+    defer allocator.free(target_path);
+    const module_source_path = try dir.dir.realpathAlloc(allocator, "module");
+    defer allocator.free(module_source_path);
+
+    const config = try std.fmt.allocPrint(allocator,
+        "platforms:\n  - platform: default\n    target: {s}\n    exclude:\n      - skipme\n    exclude_readme: true\n",
+        .{target_path},
+    );
+    defer allocator.free(config);
+    try dir.dir.writeFile(.{ .sub_path = "module/.alma.yml", .data = config });
+
+    const module_name = try allocator.dupe(u8, "dotfiles");
+    defer allocator.free(module_name);
+
+    try linkHandlerWithModuleSourcePath(allocator, .{ .repo = null, .module = module_name, .dry_run = false }, module_source_path);
+
+    try expectSymlink(allocator, target_path, "keep.txt");
+    try expectMissing(allocator, target_path, "skipme/x.txt");
+    try expectMissing(allocator, target_path, "README.md");
+}
+
+fn expectSymlink(allocator: std.mem.Allocator, target_path: []const u8, rel: []const u8) !void {
+    const path = try std.fs.path.join(allocator, &[_][]const u8{ target_path, rel });
+    defer allocator.free(path);
+    const stat = try std.fs.lstatAbsolute(path);
+    try std.testing.expectEqual(std.fs.Stat.Kind.Symlink, stat.kind);
+}
+
+fn expectMissing(allocator: std.mem.Allocator, target_path: []const u8, rel: []const u8) !void {
+    const path = try std.fs.path.join(allocator, &[_][]const u8{ target_path, rel });
+    defer allocator.free(path);
+    try std.testing.expectError(error.FileNotFound, std.fs.accessAbsolute(path, .{}));
+}
+
 test "dry run preserves configuration errors" {
     const allocator = std.testing.allocator;
     var dir = std.testing.tmpDir(.{});
